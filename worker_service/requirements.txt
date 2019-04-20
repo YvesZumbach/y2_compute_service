@@ -1,4 +1,6 @@
 ## The following requirements were added by pip freeze:
 numpy==1.16.2
 pyzmq==18.0.1
+scipy==1.2.1
+speechpy==2.4
 zmq==0.0.0
