@@ -1,5 +1,7 @@
 
-import zmq
+import asyncio
+import queue
+import typing
 
 
 class Communication:
@@ -7,15 +9,32 @@ class Communication:
     Implements communications between the communication service and the worker service.
     """
 
-    context = zmq.Context()
-    subscriber = context.socket(zmq.SUB)
-    subscriber.connect("ipc://localhost:5563")
-    subscriber.setsockopt(zmq.SUBSCRIBE, b"B")
+    def __init__(self):
+        self.reader = None
+        self.writer = None
 
-    while True:
-        # Read envelope with address
-        [address, contents] = subscriber.recv_multipart()
-        print("[%s] %s" % (address, contents))
+        self.readQueue = queue.Queue(0)
+        self.writeQueue = queue.Queue(0)
 
-    # We never get here but clean up anyhow
-    subscriber.close()
+        asyncio.run(self.start())
+
+    async def start(self):
+        self.reader, self.writer = await asyncio.open_connection('127.0.0.1', 8888)
+        await asyncio.gather(self.receive(), self.send())
+
+    def write(self, msg: typing.List):
+        self.writeQueue.put_nowait(msg)
+
+    def read(self):
+        out = self.readQueue
+        self.readQueue = queue.Queue(0)
+        return out
+
+    async def receive(self):
+        while True:
+            data = await self.reader.read()
+            self.readQueue.put(data)
+
+    async def send(self):
+        while True:
+            self.writer.write(self.writeQueue.get())
