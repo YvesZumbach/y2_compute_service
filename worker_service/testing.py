@@ -1,7 +1,5 @@
 import data
 import model
-import beam_search
-from timeit import default_timer as timer
 import torch
 import pickle as pkl
 
@@ -40,4 +38,4 @@ for batch_idx, (inputs, targets) in enumerate(val_loader):
         output_text.append(decoding_map[max_index])
     print(''.join([s for s in targets_text[0]]))
     print(''.join([s for s in output_text]))
-    #actual = beam_search.ctcBeamSearch(output[0].detach().numpy(), decoding_string, None)
+    # actual = beam_search.ctcBeamSearch(output[0].detach().numpy(), decoding_string, None)
