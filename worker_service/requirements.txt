@@ -4,11 +4,11 @@ ninja==1.9.0
 numpy==1.16.2
 Pillow==6.0.0
 pycparser==2.19
-pyzmq==18.0.1
+python-speech-features==0.6
 scipy==1.2.1
 six==1.12.0
 SoundFile==0.10.2
 speechpy==2.4
 torch==1.0.1.post2
 torchvision==0.2.2.post3
-zmq==0.0.0
+

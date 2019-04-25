@@ -50,7 +50,7 @@ def collate_padded(l):
     x, y = list(x), list(y)
     # padding
     x = rnn.pad_sequence(x, batch_first=True, padding_value=0)
-    y = rnn.pad_sequence(y, batch_first=True, padding_value=29)
+    y = rnn.pad_sequence(y, batch_first=True, padding_value=30)
     # make sure the sequence lengths for the input are all
     # multiples of 8
     if x.size(1) % 8 != 0:
