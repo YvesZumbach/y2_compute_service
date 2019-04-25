@@ -1,4 +1,3 @@
-
 import asyncio
 import queue
 import typing
@@ -18,8 +17,15 @@ class Communication:
 
         asyncio.run(self.start())
 
+
     async def start(self):
-        self.reader, self.writer = await asyncio.open_connection('127.0.0.1', 8888)
+        server = await asyncio.start_server(handler, '127.0.0.1', 1234)
+        async with server:
+            await server.serve_forever()
+
+    async def run(self, reader, writer):
+        self.reader = reader
+        self.writer = writer
         await asyncio.gather(self.receive(), self.send())
 
     def write(self, msg: typing.List):
@@ -33,8 +39,12 @@ class Communication:
     async def receive(self):
         while True:
             data = await self.reader.read()
+            print(data)
             self.readQueue.put(data)
 
     async def send(self):
         while True:
             self.writer.write(self.writeQueue.get())
+
+
+communicator = Communication()
