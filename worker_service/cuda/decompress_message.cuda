@@ -1,0 +1,6 @@
+__global__ void decompress(float *a) {
+    int idx = threadIdx.x;
+    int compressed_delta = a[idx];
+    bool delta_is_negative = compressed_delta & 0b1 == 0
+    a[idx] *= 2;
+}

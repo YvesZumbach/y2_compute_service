@@ -1,24 +1,18 @@
-import data
-import model
-from timeit import default_timer as timer
+import logging
+import time
+import threading
 
-# initialize the RNN
-# TODO correct output size (check the maps in `tools`)
-# TODO correct hidden size (trial and error? research?)
-rnn = model.RecurrentModel(13, 500, 5, 30)
+from communication import Communication
 
-# initializer data loaders
-val_loader = data.val_loader()
-train_loader = data.train_loader()
+if __name__ == '__main__':
+    # Configure the loggers
+    logging.basicConfig(format='%(asctime)s:%(levelname)s: %(message)s', level=logging.INFO)
 
-# initialize trainer
-# TODO correct number of epochs for training
-n_epochs = 2
-start = timer()
-trainer = model.ModelTrainer(rnn, val_loader, train_loader, n_epochs)
+    communication_crashed = threading.Event()
+    communication = Communication(communication_crashed)
 
-# run the training
-trainer.train()
-end = timer()
-print(end - start)
-trainer.save()
+    try:
+        while not communication_crashed.is_set():
+            time.sleep(1)
+    except KeyboardInterrupt:
+        communication.stop()
