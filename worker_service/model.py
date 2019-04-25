@@ -57,9 +57,9 @@ class ModelTrainer():
         if self.gpu:
             self.model = self.model.cuda()
 
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.008)
+        self.optimizer = nn.optim.SGD(self.model.parameters(), lr=0.008)
         self.criterion = nn.CTCLoss()
-        self.scheduler = nn.StepLR(self.optimizer, step_size=1, gamma=0.5)
+        self.scheduler = nn.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.5)
 
     def train(self):
 
@@ -103,6 +103,9 @@ class ModelTrainer():
         print(loss)
         self.optimizer.zero_grad()
         loss.backward()
+
+        #
+
         self.optimizer.step()
 
         return_loss = loss.detach().cpu().item()
