@@ -74,7 +74,7 @@ class Communication:
                 size = int.from_bytes(size_data, byteorder='big')
                 # Actually retrieve the data
                 data = await self.reader.read(size)
-                self.log.info("Received a message from communication service.")
+                self.log.info("Received a message from communication service of length " + str(size))
                 self.read_queue.put_nowait(data)
             except asyncio.CancelledError:
                 return
@@ -91,7 +91,7 @@ class Communication:
                 size = (len(data)).to_bytes(4, byteorder='big')
                 self.writer.write(size)
                 self.writer.write(data)
-                self.log.info("Sent a message to the communication service.")
+                self.log.info("Sent a message to the communication service of length " + str(len(data)))
             except asyncio.CancelledError:
                 return
             except ConnectionResetError:
