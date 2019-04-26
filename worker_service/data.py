@@ -22,10 +22,7 @@ class SpeechDataset(Dataset):
         loader = lambda s: np.load(s, encoding='bytes')
         self.X = loader(patterns_path).T
         self.y = loader(labels_path)
-        # sorting the data
-        if sorting:
-            zipped = zip(*sorted(zip(self.X, self.y), key=lambda x: x[0].shape[0]))
-            self.X, self.Y = (list(l) for l in zipped)
+
         # turning the numpy arrays into tensors
         for i in range(len(self.X)):
             self.X[i] = torch.Tensor(self.X[i])
@@ -50,7 +47,7 @@ def collate_padded(l):
     x, y = list(x), list(y)
     # padding
     x = rnn.pad_sequence(x, batch_first=True, padding_value=0)
-    y = rnn.pad_sequence(y, batch_first=True, padding_value=30)
+    y = rnn.pad_sequence(y, batch_first=True, padding_value=29)
     # make sure the sequence lengths for the input are all
     # multiples of 8
     if x.size(1) % 8 != 0:
@@ -87,7 +84,7 @@ def train_loader():
     train_dataset = SpeechDataset('data/training_data_preprocessed.npy',
                                   'data/training_labels_preprocessed.npy',
                                   sorting=True)
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, collate_fn=collate_padded)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False, collate_fn=collate_padded)
     return train_loader
 
 
@@ -109,5 +106,5 @@ def val_loader():
     val_dataset = SpeechDataset('data/testing_data_preprocessed.npy',
                                 'data/testing_labels_preprocessed.npy',
                                 sorting=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True, collate_fn=collate_padded)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=collate_padded)
     return val_loader

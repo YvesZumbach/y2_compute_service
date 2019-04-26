@@ -57,9 +57,9 @@ class ModelTrainer():
         if self.gpu:
             self.model = self.model.cuda()
 
-        self.optimizer = nn.optim.SGD(self.model.parameters(), lr=0.008)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.008)
         self.criterion = nn.CTCLoss()
-        self.scheduler = nn.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.5)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.5)
 
     def train(self):
 
