@@ -4,9 +4,12 @@ import torch
 from torch import nn
 from timeit import default_timer as timer
 
+from communication import Communication
+import y2
+
 
 class RecurrentModel(nn.Module):
-    def __init__(self, input_size, hidden_size, n_layers, output_size):
+    def __init__(self, input_size, hidden_size, n_layers, output_size, communication: Communication):
         super(RecurrentModel, self).__init__()
 
         self.input_size = input_size
@@ -23,6 +26,8 @@ class RecurrentModel(nn.Module):
                                 out_features=self.output_size,
                                 bias=True)
         self.softmax = nn.LogSoftmax()
+
+        self.communication = communication
 
     def forward(self, x):
         # x: batch_size, length, n_features
@@ -87,6 +92,7 @@ class ModelTrainer():
             self.scheduler.step()
 
     def train_batch(self, inputs, targets):
+
         if self.gpu:
             inputs = inputs.cuda()
             targets = targets.cuda()
@@ -103,9 +109,12 @@ class ModelTrainer():
         print(loss)
         self.optimizer.zero_grad()
         loss.backward()
-
-        #
-
+        # TODO: Add missing arguments
+        self.communication.send(y2.compress(self.model.parameters))
+        messages = communication.receive()
+        while not messages.empty():
+            # TODO: Add missing arguments
+            y2.decompress(messages.get())
         self.optimizer.step()
 
         return_loss = loss.detach().cpu().item()

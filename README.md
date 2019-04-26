@@ -22,3 +22,8 @@ Please only issue those commands inside a virtual environment.
 - `pip3 install -r requirements.txt` to install all required dependencies
 - `pip3 install <package_name>` to install a new package (you should probably add the newly install package to the project's list of dependencies)
 - `pip3 freeze --local -r requirements.txt > requirements.txt` to update the list of requirements (without deleting any entry already present in the `requirements.txt` file)
+
+## Compiling the CUDA Code
+
+To compile the CUDA code, run `python3 setup.py install` inside the cuda folder.
+You will need both a C++ compiler installed and a working CUDA installation (`nvcc`).

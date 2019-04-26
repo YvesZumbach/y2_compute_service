@@ -46,5 +46,5 @@ std::vector<int> y2_process_gradient_and_compute_message(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("decompress", &y2_decompress_and_apply_deltas, "Decompress a message and apply the deltas to the weights of the NN (CUDA)");
-  m.def("process_gradient_and_compute_message", &y2_process_gradient_and_compute_message, "Add gradient deltas to the residuals, compute message to send and apply the deltas above the threshold (CUDA)");
+  m.def("compress", &y2_process_gradient_and_compute_message, "Add gradient deltas to the residuals, compute message to send and apply the deltas above the threshold (CUDA)");
 }
