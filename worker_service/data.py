@@ -7,7 +7,7 @@ from torch.utils.data.dataset import Dataset
 
 
 class SpeechDataset(Dataset):
-    def __init__(self, patterns_path, labels_path, sorting=True):
+    def __init__(self, patterns_path, labels_path, node_id, number_nodes):
         """
           Parameters:
             patterns_path:  path to the patterns (x)
@@ -24,10 +24,17 @@ class SpeechDataset(Dataset):
         self.y = loader(labels_path)
 
         # turning the numpy arrays into tensors
-        for i in range(len(self.X)):
-            self.X[i] = torch.Tensor(self.X[i])
-        for i in range(len(self.y)):
-            self.y[i] = torch.Tensor(self.y[i])
+        data_chunk_size = len(self.X) / number_nodes
+        start_chunk = int(node_id * data_chunk_size)
+        end_chunk = int(start_chunk + data_chunk_size)
+        training_data = []
+        for i in range(start_chunk, end_chunk):
+            training_data.append(torch.Tensor(self.X[i]))
+        self.X = training_data
+        labels = []
+        for i in range(start_chunk, end_chunk):
+            labels.append(torch.Tensor(self.y[i]))
+        self.y = labels
 
     def __getitem__(self, i):
         return self.X[i], self.y[i]
@@ -66,7 +73,7 @@ def collate_unpadded(l):
     return x, y
 
 
-def train_loader():
+def train_loader(node_id, number_nodes):
     """
       Loads the training data (letter wise).
       Returns:
@@ -83,12 +90,12 @@ def train_loader():
     """
     train_dataset = SpeechDataset('data/training_data_preprocessed.npy',
                                   'data/training_labels_preprocessed.npy',
-                                  sorting=True)
+                                  node_id, number_nodes)
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False, collate_fn=collate_padded)
     return train_loader
 
 
-def val_loader():
+def val_loader(node_id, number_nodes):
     """
       Loads the validation data (letter wise).
       Returns:
@@ -105,6 +112,6 @@ def val_loader():
     """
     val_dataset = SpeechDataset('data/testing_data_preprocessed.npy',
                                 'data/testing_labels_preprocessed.npy',
-                                sorting=True)
+                                node_id, number_nodes)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=collate_padded)
     return val_loader

@@ -5,7 +5,6 @@ from torch import nn
 from timeit import default_timer as timer
 
 from communication import Communication
-import y2
 
 
 class RecurrentModel(nn.Module):
@@ -111,7 +110,7 @@ class ModelTrainer():
         loss.backward()
         # TODO: Add missing arguments
         self.communication.send(y2.compress(self.model.parameters))
-        messages = communication.receive()
+        messages = self.communication.receive()
         while not messages.empty():
             # TODO: Add missing arguments
             y2.decompress(messages.get())

@@ -1,12 +1,10 @@
 import logging
-import pickle as pkl
 import time
-import torch
 import threading
-
 import data
 import model
 from communication import Communication
+from timeit import default_timer as timer
 
 if __name__ == '__main__':
     print("Starting the y2 worker.")
@@ -18,41 +16,31 @@ if __name__ == '__main__':
     communication_crashed = threading.Event()
     communication = Communication(communication_crashed)
 
-    decoding_map = pkl.load(open("tools/dec_map.pkl", "rb"))
-    decoding_string = ''.join([e for e in decoding_map.values()])
+    messages = communication.receive()
+    while messages.empty():
+        time.sleep(2)
+        messages = communication.receive()
 
-    # Initialize the RNN
+    message = messages.get()
+    node_id = int.from_bytes(message[:4], byteorder='big')
+    total_nodes = int.from_bytes(message[:-4], byteorder='big')
+
     rnn = model.RecurrentModel(13, 500, 5, 30, communication)
-    load = torch.load('experiments/model_2.pkl')
-    rnn.load_state_dict(load['state_dict'])
-    rnn.eval()
 
-    # Initializer data loaders
-    val_loader = data.val_loader()
-    train_loader = data.train_loader()
+    # initializer data loaders
+    val_loader = data.val_loader(node_id, total_nodes)
+    train_loader = data.train_loader(node_id, total_nodes)
 
-    # Perform the actual training
-    for batch_idx, (inputs, targets) in enumerate(val_loader):
-        print('\rBatch {:03}/{:03}'.format(batch_idx + 1, len(val_loader)), end='')
-        output = rnn(inputs)
-        targets_text = []
-        for t in targets:
-            target = []
-            for ch in list(t):
-                if ch.item() == 29:
-                    target.append('')
-                else:
-                    target.append(decoding_map[ch.item() - 1])
-            targets_text.append(target)
-        output_text = []
-        for o in output[0]:
-            o = [e.item() for e in o]
-            o = o[1:]
-            o = o[:-1]
-            max_index = o.index(max(o))
-            output_text.append(decoding_map[max_index])
-        print(''.join([s for s in targets_text[0]]))
-        print(''.join([s for s in output_text]))
+    # initialize trainer
+    n_epochs = 2
+    start = timer()
+    trainer = model.ModelTrainer(rnn, val_loader, train_loader, n_epochs)
+
+    # run the training
+    trainer.train()
+    end = timer()
+    print(end - start)
+    trainer.save()
 
     try:
         while not communication_crashed.is_set():

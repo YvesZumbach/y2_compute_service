@@ -8,8 +8,8 @@ from timeit import default_timer as timer
 rnn = model.RecurrentModel(13, 500, 5, 30)
 
 # initializer data loaders
-val_loader = data.val_loader()
-train_loader = data.train_loader()
+val_loader = data.val_loader(2, 10)
+train_loader = data.train_loader(2, 10)
 
 # initialize trainer
 # TODO correct number of epochs for training
