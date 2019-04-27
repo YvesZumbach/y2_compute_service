@@ -22,7 +22,7 @@ if __name__ == '__main__':
         messages = communication.receive()
 
     # TODO Process message of type NodeIndex specifically
-    message_type, message = messages.get()
+    message_type, message = messages.get_nowait()
     node_id = int.from_bytes(message[:4], byteorder='big')
     total_nodes = int.from_bytes(message[-4:], byteorder='big')
     print(node_id, total_nodes)
