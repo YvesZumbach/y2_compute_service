@@ -11,7 +11,28 @@ __global__ void y2_cuda_decompress_and_apply_deltas(
         std::vector<torch::Tensor> parameters
 ) {
     // TODO: Write the actual kernel
-
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+    for (unsigned i=0; i < messages.size(); i++) {
+        std::vector<int> message = messages[i];
+        for (unsigned j=threadId; j < message.size(); j += blockDim.x) {
+            int encoded = message[j];
+            int positive_threshold = encoded >> 31;
+            int tensor_id = (encoded << 1) >> 29;
+            int weight_id = (encoded << 4) >> 4;
+            int is_weights = tensor_id % 2 == 0;
+            torch::Tensor t;
+            if (is_weights) {
+                t = parameters[tensor_id];
+            } else {
+                t = parameters[tensor_id - 1].&grad();
+            }
+            if (positive_threshold) {
+                t[weight_id] += 5.0;
+            } else {
+                t[weight_id] -= 5.0;
+            }
+        }
+    }
     // for message in messages
     //      for each integer in message
                     positive/negative, index : split(integer)
