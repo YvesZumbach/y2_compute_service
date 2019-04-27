@@ -7,6 +7,7 @@ class Communication:
     """
     Implements communications between the communication service and the worker service.
     """
+    _handshake_size = 8
 
     def __init__(self, communication_crashed):
         self.communication_crashed = communication_crashed
@@ -67,14 +68,16 @@ class Communication:
         while True:
             try:
                 # Retrieve the size of the message
-                size_data = await self.reader.read(4)
+                size_data = await self.reader.read(Communication._handshake_size)
                 if len(size_data) is 0:
                     raise ConnectionResetError
-                size = int.from_bytes(size_data, byteorder='big')
+                message_type = int.from_bytes(size_data[:4], byteorder='big')
+                size = int.from_bytes(size_data[4:], byteorder='big')
                 # Actually retrieve the data
                 data = await self.reader.read(size)
-                self.log.info("Received a message from communication service of length " + str(size))
-                self.read_queue.put_nowait(data)
+                self.log.info("Received a message of type " + str(message_type)
+                              + " of length " + str(size) + " from the communication service.")
+                self.read_queue.put_nowait((message_type, data))
             except asyncio.CancelledError:
                 return
             except ConnectionResetError:
@@ -86,8 +89,9 @@ class Communication:
     async def write(self):
         while True:
             try:
-                data = await self.write_queue.get()
+                message_type, data = await self.write_queue.get()
                 size = (len(data)).to_bytes(4, byteorder='big')
+                self.writer.write(message_type)
                 self.writer.write(size)
                 self.writer.write(data)
                 self.log.info("Sent a message to the communication service of length " + str(len(data)))
