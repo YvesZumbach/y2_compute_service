@@ -96,9 +96,6 @@ class ModelTrainer():
             inputs = inputs.cuda()
             targets = targets.cuda()
         outputs = self.model(inputs)
-        print(inputs[0])
-        print(outputs[0])
-        print(targets[0])
 
         targets = targets.type(torch.LongTensor)
         input_lens = np.sum(inputs.detach().numpy()[:,:,0] != -1, axis=1)
@@ -108,12 +105,17 @@ class ModelTrainer():
         print(loss)
         self.optimizer.zero_grad()
         loss.backward()
+        for l in self.model.parameters():
+            print(l.size())
+            print(l.grad.size())
         # TODO: Add missing arguments
         self.communication.send(y2.compress(self.model.parameters))
         messages = self.communication.receive()
         while not messages.empty():
             # TODO: Add missing arguments
             y2.decompress(messages.get())
+
+        # applies the gradients to the network
         self.optimizer.step()
 
         return_loss = loss.detach().cpu().item()

@@ -5,7 +5,8 @@ from timeit import default_timer as timer
 # initialize the RNN
 # TODO correct output size (check the maps in `tools`)
 # TODO correct hidden size (trial and error? research?)
-rnn = model.RecurrentModel(13, 500, 5, 30)
+rnn = model.RecurrentModel(13, 500, 5, 30, None)
+
 
 # initializer data loaders
 val_loader = data.val_loader(2, 10)

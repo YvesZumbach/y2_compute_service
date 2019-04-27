@@ -4,44 +4,39 @@
 
 // CUDA forward declarations
 
-std::vector<torch::Tensor> y2_cuda_decompress_and_apply_deltas(
-        std::vector<int> message,
-        torch::Tensor weights,
-        torch::Tensor bias
+void y2_cuda_decompress_and_apply_deltas(
+        std::vector<std::vector<int>> messages,
+        std::vector<torch::Tensor> parameters
 );
 
 std::vector<int> y2_cuda_process_gradient_and_compute_message(
-        torch::Tensor grad,
-        torch::Tensor weights,
-        torch::Tensor residuals
+        std::vector<torch::Tensor> parameters,
+        std::vector<torch::Tensor> residuals
 );
 
 // C++ interface
 
 #define CHECK_CUDA(x) AT_ASSERTM(x.type().is_cuda(), #x " must be a CUDA tensor")
 
-std::vector<torch::Tensor> y2_decompress_and_apply_deltas(
-        std::vector<int> message,
-        torch::Tensor weights,
-        torch::Tensor bias
+void y2_decompress_and_apply_deltas(
+        std::vector<std::vector<int>> messages,
+        std::vector<torch::Tensor> parameters
 ) {
-    CHECK_CUDA(message);
-    CHECK_CUDA(weights);
-    CHECK_CUDA(bias);
+    CHECK_CUDA(messages);
+    CHECK_CUDA(parameters);
 
-    return y2_cuda_decompress_and_apply_deltas(message, weights, bias);
+    y2_cuda_decompress_and_apply_deltas(messages, parameters);
 }
 
 std::vector<int> y2_process_gradient_and_compute_message(
-        torch::Tensor grad,
-        torch::Tensor weights,
-        torch::Tensor residuals
+        std::vector<torch::Tensor> grad,
+        std::vector<torch::Tensor> parameters,
+        std::vector<torch::Tensor> residuals
 ) {
-    CHECK_CUDA(grad);
-    CHECK_CUDA(weights);
+    CHECK_CUDA(parameters);
     CHECK_CUDA(residuals);
 
-    return y2_cuda_process_gradient_and_compute_message(grad, weights, residuals);
+    return y2_cuda_process_gradient_and_compute_message(parameters, residuals);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {

@@ -18,7 +18,6 @@ class Communication:
         self.read_queue = asyncio.Queue()
         self.write_queue = asyncio.Queue()
 
-
         self.log = logging.getLogger(__name__)
         self.task = None
 

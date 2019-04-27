@@ -21,9 +21,10 @@ if __name__ == '__main__':
         time.sleep(2)
         messages = communication.receive()
 
-    message = messages.get()
+    message = messages.get_nowait()
     node_id = int.from_bytes(message[:4], byteorder='big')
-    total_nodes = int.from_bytes(message[:-4], byteorder='big')
+    total_nodes = int.from_bytes(message[-4:], byteorder='big')
+    print(node_id, total_nodes)
 
     rnn = model.RecurrentModel(13, 500, 5, 30, communication)
 
