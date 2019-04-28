@@ -6,39 +6,37 @@
 
 #include <vector>
 
+const int delta = 5.0;
+const int weight_index_mask = 0b111111111111111111111;
+
 __global__ void y2_cuda_decompress_and_apply_deltas(
         std::vector<std::vector<int>> messages,
         std::vector<torch::Tensor> parameters
 ) {
-    // TODO: Write the actual kernel
     int threadId = blockIdx.x * blockDim.x + threadIdx.x;
     for (unsigned i=0; i < messages.size(); i++) {
         std::vector<int> message = messages[i];
         for (unsigned j=threadId; j < message.size(); j += blockDim.x) {
             int encoded = message[j];
-            int positive_threshold = encoded >> 31;
-            int tensor_id = (encoded << 1) >> 29;
-            int weight_id = (encoded << 4) >> 4;
-            int is_weights = tensor_id % 2 == 0;
+            // Whether the threshold is positive or negative is encoded in the least significant bit
+            const int positive_delta = encoded & 0b1;
+            // Keep the 21 least significant bits for the index of the weight
+            const unsigned int weight_index = index & weight_index_mask;
+            encoded = encoded >> 21;
+            // Whether we are changing a bias or a weight
+            const unsigned int is_weight = encoded & 0b1;
+            encoded = encoded >> 1;
+            // The remaining bits encode the tensor index
+            const unsigned int tensor_index = encoded;
             torch::Tensor t;
             if (is_weights) {
-                t = parameters[tensor_id];
+                t = parameters[tensor_index];
             } else {
-                t = parameters[tensor_id - 1].&grad();
+                t = parameters[tensor_index - 1].&grad();
             }
-            if (positive_threshold) {
-                t[weight_id] += 5.0;
-            } else {
-                t[weight_id] -= 5.0;
-            }
+            t[weight_index] += positive_delta ? delta : -delta;
         }
     }
-    // for message in messages
-    //      for each integer in message
-                    positive/negative, index : split(integer)
-                    find id of parameter list to apply to
-                    find id of parameter in list
-                    apply + or - threshold
 
 }
 
