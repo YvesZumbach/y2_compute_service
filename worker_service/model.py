@@ -77,6 +77,7 @@ class ModelTrainer():
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.5)
 
     def train(self):
+        total_loss = 0
 
         for _ in range(self.epoch, self.n_epochs):
             start = timer()
@@ -118,6 +119,9 @@ class ModelTrainer():
             ), end='\t')
             print('Time elapsed: {}'.format(end-start))
             self.scheduler.step()
+            total_loss += epoch_loss
+
+        print('Total job loss: {}'.format(total_loss))
 
     def train_batch(self, inputs, targets):
         compress_time = 0
