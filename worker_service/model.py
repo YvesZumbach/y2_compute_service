@@ -145,7 +145,7 @@ class ModelTrainer():
             deltas_to_send = self.compress_gradients()
             end_compress = timer()
             compress_time = end_compress - start_compress
-            self.model.communication.send((1, deltas_to_send))
+            self.model.communication.send(1, deltas_to_send)
 
             messages = self.model.communication.receive(1)
             start_decompress = timer()
