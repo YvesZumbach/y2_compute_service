@@ -113,7 +113,6 @@ class ModelTrainer():
                 runtime_message.join(int(epoch_loss * 1000).to_bytes(4, byteorder="big"))
                 self.model.communication.send(2, runtime_message)
 
-
             print('\r[TRAIN] Epoch {:02}/{:02} Loss {:7.4f}'.format(
                 self.epoch, self.n_epochs, epoch_loss
             ), end='\t')
