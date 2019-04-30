@@ -44,8 +44,6 @@ if __name__ == '__main__':
     print(end - start)
     # trainer.save()
 
-    try:
-        while not communication_crashed.is_set():
-            time.sleep(1)
-    except KeyboardInterrupt:
-        communication.stop()
+    # Send the Finished message
+    communication.send(3, bytearray(0))
+    communication.stop()
