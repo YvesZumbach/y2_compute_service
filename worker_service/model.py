@@ -77,6 +77,7 @@ class ModelTrainer():
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.5)
 
     def train(self):
+        total_loss = 0
 
         for _ in range(self.epoch, self.n_epochs):
             start = timer()
@@ -113,12 +114,14 @@ class ModelTrainer():
                 runtime_message.join(int(epoch_loss * 1000).to_bytes(4, byteorder="big"))
                 self.model.communication.send(2, runtime_message)
 
-
             print('\r[TRAIN] Epoch {:02}/{:02} Loss {:7.4f}'.format(
                 self.epoch, self.n_epochs, epoch_loss
             ), end='\t')
             print('Time elapsed: {}'.format(end-start))
             self.scheduler.step()
+            total_loss += epoch_loss
+
+        print('Total job loss: {}'.format(total_loss))
 
     def train_batch(self, inputs, targets):
         compress_time = 0
@@ -145,7 +148,7 @@ class ModelTrainer():
             deltas_to_send = self.compress_gradients()
             end_compress = timer()
             compress_time = end_compress - start_compress
-            self.model.communication.send((1, deltas_to_send))
+            self.model.communication.send(1, deltas_to_send)
 
             messages = self.model.communication.receive(1)
             start_decompress = timer()

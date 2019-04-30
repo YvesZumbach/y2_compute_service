@@ -12,7 +12,7 @@ train_loader = data.train_loader(0, 1)
 
 # initialize trainer
 
-n_epochs = 5
+n_epochs = 10
 start = timer()
 trainer = model.ModelTrainer(rnn, val_loader, train_loader, n_epochs, False)
 

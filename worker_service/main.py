@@ -16,12 +16,11 @@ if __name__ == '__main__':
     communication_crashed = threading.Event()
     communication = Communication(communication_crashed)
 
-    messages = communication.receive()
+    messages = communication.receive(0)
     while messages.empty():
         time.sleep(2)
-        messages = communication.receive()
+        messages = communication.receive(0)
 
-    # TODO Process message of type NodeIndex specifically
     message_type, message = messages.get_nowait()
     node_id = int.from_bytes(message[:4], byteorder='big')
     total_nodes = int.from_bytes(message[-4:], byteorder='big')
