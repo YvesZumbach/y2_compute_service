@@ -8,6 +8,9 @@ class Communication:
     Implements communications between the communication service and the worker service.
     """
     _handshake_size = 8
+    _node_index = 0
+    _delta = 1
+    _number_msg_types = 2
 
     def __init__(self, communication_crashed):
         self.communication_crashed = communication_crashed
@@ -16,7 +19,10 @@ class Communication:
         self.writer = None
 
         self.loop = asyncio.get_event_loop()
-        self.read_queue = asyncio.Queue()
+        self.read_queue = []
+        for i in range(Communication._number_msg_types):
+            self.read_queue.append(asyncio.Queue())
+
         self.write_queue = asyncio.Queue()
 
         self.log = logging.getLogger(__name__)
@@ -54,13 +60,13 @@ class Communication:
         if self.task is not None:
             self.task.cancel()
 
-    def send(self, msg: bytes):
-        self.write_queue.put_nowait(msg)
+    def send(self, msg_type, msg: bytes):
+        self.write_queue.put_nowait((msg_type, msg))
         self.log.info("Message added to the queue of message to send to the communication service.")
 
-    def receive(self) -> asyncio.Queue:
-        out = self.read_queue
-        self.read_queue = asyncio.Queue()
+    def receive(self, type) -> asyncio.Queue:
+        out = self.read_queue[type]
+        self.read_queue[type] = asyncio.Queue()
         self.log.info("All received messages in the queue were read.")
         return out
 
@@ -77,7 +83,7 @@ class Communication:
                 data = await self.reader.read(size)
                 self.log.info("Received a message of type " + str(message_type)
                               + " of length " + str(size) + " from the communication service.")
-                self.read_queue.put_nowait((message_type, data))
+                self.read_queue[message_type].put_nowait(data)
             except asyncio.CancelledError:
                 return
             except ConnectionResetError:

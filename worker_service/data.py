@@ -19,7 +19,7 @@ class SpeechDataset(Dataset):
             self.X:         list of numpy arrays, each of size (L x 40)
             self.Y:         list of numy arrays of words, each of size (L)
         """
-        loader = lambda s: np.load(s, encoding='bytes')
+        loader = lambda s: np.load(s, encoding='bytes', allow_pickle=True)
         self.X = loader(patterns_path).T
         self.y = loader(labels_path)
 
@@ -91,7 +91,7 @@ def train_loader(node_id, number_nodes):
     train_dataset = SpeechDataset('data/training_data_preprocessed.npy',
                                   'data/training_labels_preprocessed.npy',
                                   node_id, number_nodes)
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False, collate_fn=collate_padded)
+    train_loader = DataLoader(train_dataset, batch_size=256, shuffle=False, collate_fn=collate_padded)
     return train_loader
 
 
@@ -113,5 +113,5 @@ def val_loader(node_id, number_nodes):
     val_dataset = SpeechDataset('data/testing_data_preprocessed.npy',
                                 'data/testing_labels_preprocessed.npy',
                                 node_id, number_nodes)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=collate_padded)
+    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, collate_fn=collate_padded)
     return val_loader

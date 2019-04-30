@@ -27,7 +27,7 @@ if __name__ == '__main__':
     total_nodes = int.from_bytes(message[-4:], byteorder='big')
     print(node_id, total_nodes)
 
-    rnn = model.RecurrentModel(13, 500, 5, 30, communication)
+    rnn = model.RecurrentModel(13, 200, 4, 30, communication)
 
     # initializer data loaders
     val_loader = data.val_loader(node_id, total_nodes)
@@ -36,13 +36,13 @@ if __name__ == '__main__':
     # initialize trainer
     n_epochs = 2
     start = timer()
-    trainer = model.ModelTrainer(rnn, val_loader, train_loader, n_epochs)
+    trainer = model.ModelTrainer(rnn, val_loader, train_loader, n_epochs, True)
 
     # run the training
     trainer.train()
     end = timer()
     print(end - start)
-    trainer.save()
+    # trainer.save()
 
     try:
         while not communication_crashed.is_set():
