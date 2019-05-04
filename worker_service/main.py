@@ -1,4 +1,5 @@
 import logging
+import sys
 import time
 import threading
 import data
@@ -7,10 +8,10 @@ from communication import Communication
 from timeit import default_timer as timer
 
 if __name__ == '__main__':
-    print("Starting the y2 worker.")
-
     # Configure the loggers
     logging.basicConfig(format='%(asctime)s:%(levelname)s: %(message)s', level=logging.INFO)
+    log = logging.getLogger(__name__)
+    log.info('Starting the y2 worker.')
 
     # Start the communications
     communication_crashed = threading.Event()
@@ -18,14 +19,15 @@ if __name__ == '__main__':
 
     messages = communication.receive(0)
     while messages.empty():
-        time.sleep(2)
+        time.sleep(.5)
         messages = communication.receive(0)
 
-    message_type, message = messages.get_nowait()
+    message = messages.get_nowait()
     node_id = int.from_bytes(message[:4], byteorder='big')
     total_nodes = int.from_bytes(message[-4:], byteorder='big')
-    print(node_id, total_nodes)
+    log.info("This worker received node id " + str(node_id) + " in a total of " + str(total_nodes) + " nodes.")
 
+    # Instantiate the NN
     rnn = model.RecurrentModel(13, 200, 4, 30, communication)
 
     # initializer data loaders
