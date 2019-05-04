@@ -1,55 +1,14 @@
 
-import asyncio
 import os
 import numpy as np
 import torch
 from torch import nn
 from timeit import default_timer as timer
 
-from communication import Communication
 
-
-class RecurrentModel(nn.Module):
-    def __init__(self, input_size, hidden_size, n_layers, output_size, communication: Communication):
-        super(RecurrentModel, self).__init__()
-
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.n_layers = n_layers
-        self.output_size = output_size
-
-        self.recurrent = nn.RNN(input_size=self.input_size,
-                                hidden_size=self.hidden_size,
-                                num_layers=self.n_layers,
-                                nonlinearity='tanh',
-                                bias=True)
-        self.output = nn.Linear(in_features=self.hidden_size,
-                                out_features=self.output_size,
-                                bias=True)
-        self.softmax = nn.LogSoftmax()
-
-        self.communication = communication
-
-    def forward(self, x):
-        # x: batch_size, length, n_features
-        hidden = None
-        rnn_output, hidden = self.recurrent(x, hidden)
-        # rnn_output: batch_size, length, n_hidden
-        # hidden: 5, length, n_hidden
-        rnn_output_flat = rnn_output.view(-1, self.hidden_size)
-        # rnn_output_flat: batch_size*length, n_hidden
-        lin_output = self.output(rnn_output_flat)
-        # lin_output: batch_size*length, n_out
-        output_flat = self.softmax(lin_output)
-        # output_flat: batch_size*length, n_out
-        output = output_flat.view(rnn_output.size(0), rnn_output.size(1), output_flat.size(1))
-        # output: batch_size, length, n_out
-
-        return output
-
-
-class ModelTrainer():
+class ModelTrainer:
     _delta = 2.0
+    _parallel = False
 
     def __init__(self, model, val_loader, train_loader, n_epochs, communicate):
         self.model = model
@@ -145,7 +104,10 @@ class ModelTrainer():
 
         if self.communicate:
             start_compress = timer()
-            deltas_to_send = self.compress_gradients()
+            if ModelTrainer._parallel:
+                deltas_to_send = self.compress_gradients_parallel()
+            else:
+                deltas_to_send = self.compress_gradients()
             end_compress = timer()
             compress_time = end_compress - start_compress
             self.model.communication.send(1, deltas_to_send)
@@ -225,12 +187,12 @@ class ModelTrainer():
         print(count)
         return message
 
-    def decompress_and_apply_messages(self, messages: asyncio.Queue):
+    def decompress_and_apply_messages(self, messages):
         weight_index_mask = 0b111111111111111111111
         while not messages.empty():
             message = messages.get_nowait()
             for i in range(0, len(message), 4):
-                delta = message[i:i+4]
+                delta = message[i:i + 4]
                 int_msg = int.from_bytes(delta, byteorder='big')
                 is_positive = int_msg & 0b1
                 int_msg >>= 1
@@ -246,3 +208,56 @@ class ModelTrainer():
                     second = weight_index % second_dim
                     first = weight_index / second_dim
                     tensor.grad[first][second] += ModelTrainer._delta if is_positive else -ModelTrainer._delta
+
+    def compress_gradients_parallel(self):
+        cpu_count = os.cpu_count()
+        pass
+
+    def compress_gradients_parallel_inner(self, threadIndex, threadCount):
+        message = bytearray(0)
+        parameters = list(self.model.parameters())
+        count = 0
+        for i in range(len(parameters)):
+            tensor = parameters[i]
+            dimensions = len(tensor.size())
+            if dimensions == 1:
+                for j in range(len(tensor)):
+                    self.residuals[i][j] += tensor.grad[j]
+                    tensor.grad[j] = 0.0
+                    if abs(self.residuals[i][j]) >= ModelTrainer._delta:
+                        count += 1
+                        tensor_index = i << 22
+                        weight_index = j << 1
+                        delta = tensor_index | weight_index
+                        if self.residuals[i][j] >= ModelTrainer._delta:
+                            delta |= 1
+                            self.residuals[i][j] -= ModelTrainer._delta
+                            tensor.grad[j] = ModelTrainer._delta
+                        else:
+                            self.residuals[i][j] += ModelTrainer._delta
+                            tensor.grad[j] = -ModelTrainer._delta
+                        message.join(delta.to_bytes(4, byteorder="big"))
+            else:
+                first_dim = tensor.size()[0]
+                second_dim = tensor.size()[1]
+                for first in range(first_dim):
+                    for second in range(second_dim):
+                        self.residuals[i][first][second] += tensor.grad[first][second]
+                        tensor.grad[first][second] = 0.0
+                        if abs(self.residuals[i][first][second]) >= ModelTrainer._delta:
+                            count += 1
+                            tensor_index = i << 22
+                            linear_index = first * second_dim + second
+                            weight_index = linear_index << 1
+                            delta = tensor_index | weight_index
+                            if self.residuals[i][first][second] >= ModelTrainer._delta:
+                                delta |= 1
+                                self.residuals[first][second] -= ModelTrainer._delta
+                                tensor.grad[first][second] = ModelTrainer._delta
+                            else:
+                                self.residuals[i][first][second] += ModelTrainer._delta
+                                tensor.grad[first][second] = -ModelTrainer._delta
+                            message.join(delta.to_bytes(4, byteorder="big"))
+        print("Total num of msgs")
+        print(count)
+        return message
