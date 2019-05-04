@@ -102,7 +102,7 @@ class ModelTrainer:
         end_batch = timer()
         training_time = end_batch - start_batch
 
-        if self.communicate:
+        if self.communicate and self.epoche > 1:
             start_compress = timer()
             if ModelTrainer._parallel:
                 deltas_to_send = self.compress_gradients_parallel()

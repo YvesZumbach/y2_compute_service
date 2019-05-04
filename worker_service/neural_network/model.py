@@ -1,7 +1,7 @@
 
 from torch import nn
 
-from worker_service.communications.communication import Communication
+from communications.communication import Communication
 
 
 class RecurrentModel(nn.Module):

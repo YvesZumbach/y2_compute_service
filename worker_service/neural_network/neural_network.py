@@ -1,6 +1,6 @@
-import worker_service.neural_network.data as data
-import worker_service.neural_network.model as model
-from worker_service.neural_network.model_trainer import ModelTrainer
+import neural_network.data as data
+import neural_network.model as model
+from neural_network.model_trainer import ModelTrainer
 from timeit import default_timer as timer
 
 # initialize the RNN

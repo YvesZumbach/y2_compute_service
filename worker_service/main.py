@@ -3,10 +3,10 @@ import threading
 import time
 from timeit import default_timer as timer
 
-from worker_service.communications.communication import Communication
-import worker_service.neural_network.data as data
-from worker_service.neural_network.model import RecurrentModel
-from worker_service.neural_network.model_trainer import ModelTrainer
+from communications.communication import Communication
+import neural_network.data as data
+from neural_network.model import RecurrentModel
+from neural_network.model_trainer import ModelTrainer
 
 if __name__ == '__main__':
     # Configure the loggers
