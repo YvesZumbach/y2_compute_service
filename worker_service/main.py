@@ -21,7 +21,7 @@ if __name__ == '__main__':
         time.sleep(2)
         messages = communication.receive(0)
 
-    message_type, message = messages.get_nowait()
+    message = messages.get_nowait()
     node_id = int.from_bytes(message[:4], byteorder='big')
     total_nodes = int.from_bytes(message[-4:], byteorder='big')
     print(node_id, total_nodes)

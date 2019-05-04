@@ -107,11 +107,11 @@ class ModelTrainer():
                 # of samples = 256 * n.epoch
                 sample_size = 256 * len(self.train_loader)
                 runtime_message = bytearray(0)
-                runtime_message.join(int(sample_size).to_bytes(4, byteorder="big"))
-                runtime_message.join(int(epoch_decompressing_time * 1000).to_bytes(4, byteorder="big"))
-                runtime_message.join(int(epoch_training_time * 1000).to_bytes(4, byteorder="big"))
-                runtime_message.join(int(epoch_compressing_time * 1000).to_bytes(4, byteorder="big"))
-                runtime_message.join(int(epoch_loss * 1000).to_bytes(4, byteorder="big"))
+                runtime_message.extend(int(sample_size).to_bytes(4, byteorder="big"))
+                runtime_message.extend(int(epoch_decompressing_time * 1000).to_bytes(4, byteorder="big"))
+                runtime_message.extend(int(epoch_training_time * 1000).to_bytes(4, byteorder="big"))
+                runtime_message.extend(int(epoch_compressing_time * 1000).to_bytes(4, byteorder="big"))
+                runtime_message.extend(int(epoch_loss * 1000).to_bytes(4, byteorder="big"))
                 self.model.communication.send(2, runtime_message)
 
             print('\r[TRAIN] Epoch {:02}/{:02} Loss {:7.4f}'.format(
@@ -199,7 +199,8 @@ class ModelTrainer():
                         else:
                             self.residuals[i][j] += ModelTrainer._delta
                             tensor.grad[j] = -ModelTrainer._delta
-                        message.join(delta.to_bytes(4, byteorder="big"))
+                        delta_bytes = delta.to_bytes(4, byteorder="big")
+                        message.extend(delta_bytes)
             else:
                 first_dim = tensor.size()[0]
                 second_dim = tensor.size()[1]
@@ -215,20 +216,24 @@ class ModelTrainer():
                             delta = tensor_index | weight_index
                             if self.residuals[i][first][second] >= ModelTrainer._delta:
                                 delta |= 1
-                                self.residuals[first][second] -= ModelTrainer._delta
+                                self.residuals[i][first][second] -= ModelTrainer._delta
                                 tensor.grad[first][second] = ModelTrainer._delta
                             else:
                                 self.residuals[i][first][second] += ModelTrainer._delta
                                 tensor.grad[first][second] = -ModelTrainer._delta
-                            message.join(delta.to_bytes(4, byteorder="big"))
+                            delta_bytes = delta.to_bytes(4, byteorder="big")
+                            message.extend(delta_bytes)
         print("Total num of msgs")
         print(count)
         return message
 
     def decompress_and_apply_messages(self, messages: asyncio.Queue):
+        print("Decompressing received messages")
         weight_index_mask = 0b111111111111111111111
         while not messages.empty():
             message = messages.get_nowait()
+            print("Received one message")
+            print("Length of msg: {}".format(len(message)))
             for i in range(0, len(message), 4):
                 delta = message[i:i+4]
                 int_msg = int.from_bytes(delta, byteorder='big')
@@ -239,6 +244,7 @@ class ModelTrainer():
                 tensor_index = int_msg
                 tensor = self.model.parameters()[tensor_index]
                 dimensions = tensor.size()
+                print("Apply delta {} at tensor_index {} at weight_index {}".format(is_positive, tensor_index, weight_index))
                 if len(dimensions) == 1:
                     tensor.grad[weight_index] += ModelTrainer._delta if is_positive else -ModelTrainer._delta
                 else:

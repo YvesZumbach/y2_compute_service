@@ -10,7 +10,7 @@ class Communication:
     _handshake_size = 8
     _node_index = 0
     _delta = 1
-    _number_msg_types = 2
+    _number_msg_types = 3
 
     def __init__(self, communication_crashed):
         self.communication_crashed = communication_crashed
@@ -64,15 +64,16 @@ class Communication:
         self.write_queue.put_nowait((msg_type, msg))
         self.log.info("Message added to the queue of message to send to the communication service.")
 
-    def receive(self, type) -> asyncio.Queue:
-        out = self.read_queue[type]
-        self.read_queue[type] = asyncio.Queue()
+    def receive(self, msg_type) -> asyncio.Queue:
+        out = self.read_queue[msg_type]
+        self.read_queue[msg_type] = asyncio.Queue()
         self.log.info("All received messages in the queue were read.")
         return out
 
     async def read(self):
         while True:
             try:
+                self.log.info("Received a message request.")
                 # Retrieve the size of the message
                 size_data = await self.reader.read(Communication._handshake_size)
                 if len(size_data) is 0:
