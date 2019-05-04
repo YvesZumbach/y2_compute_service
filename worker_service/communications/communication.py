@@ -1,6 +1,8 @@
 import asyncio
+import janus
 import logging
 import threading
+
 
 
 class Communication:
@@ -21,9 +23,9 @@ class Communication:
         self.loop = asyncio.get_event_loop()
         self.read_queue = []
         for i in range(Communication._number_msg_types):
-            self.read_queue.append(asyncio.Queue())
+            self.read_queue.append(janus.Queue(loop=self.loop))
 
-        self.write_queue = asyncio.Queue()
+        self.write_queue = janus.Queue(loop=self.loop)
 
         self.log = logging.getLogger(__name__)
         self.task = None
@@ -50,7 +52,7 @@ class Communication:
                 await asyncio.sleep(1)
         self.log.info("Connected to the communication service.")
         # Start the async read and write processes
-        await asyncio.gather(self.read(), self.write())
+        await asyncio.gather(self._read(), self._write())
 
     def stop(self):
         self.log.info("Gracefully stopping the communications with the communication service.")
@@ -60,17 +62,17 @@ class Communication:
         if self.task is not None:
             self.task.cancel()
 
-    def send(self, msg_type, msg: bytes):
-        self.write_queue.put_nowait((msg_type, msg))
+    def send(self, msg_type: int, msg: bytes):
+        self.write_queue.sync_q.put_nowait((msg_type, msg))
         self.log.info("Message added to the queue of message to send to the communication service.")
 
-    def receive(self, msg_type) -> asyncio.Queue:
-        out = self.read_queue[msg_type]
-        self.read_queue[msg_type] = asyncio.Queue()
+    def receive(self, message_type: int):
+        out = self.read_queue[message_type]
+        self.read_queue[message_type] = janus.Queue()
         self.log.info("All received messages in the queue were read.")
-        return out
+        return out.sync_q
 
-    async def read(self):
+    async def _read(self):
         while True:
             try:
                 self.log.info("Received a message request.")
@@ -84,7 +86,7 @@ class Communication:
                 data = await self.reader.read(size)
                 self.log.info("Received a message of type " + str(message_type)
                               + " of length " + str(size) + " from the communication service.")
-                self.read_queue[message_type].put_nowait(data)
+                self.read_queue[message_type].sync_q.put_nowait(data)
             except asyncio.CancelledError:
                 return
             except ConnectionResetError:
@@ -93,13 +95,12 @@ class Communication:
                 self.stop_inner()
                 return
 
-    async def write(self):
+    async def _write(self):
         while True:
             try:
-                message_type, data = await self.write_queue.get()
-                size = (len(data)).to_bytes(4, byteorder='big')
-                self.writer.write(message_type)
-                self.writer.write(size)
+                message_type, data = await self.write_queue.async_q.get()
+                size = len(data)
+                self.writer.write(message_type.to_bytes(4, byteorder="big") + size.to_bytes(4, byteorder="big"))
                 self.writer.write(data)
                 self.log.info("Sent a message to the communication service of length " + str(len(data)))
             except asyncio.CancelledError:

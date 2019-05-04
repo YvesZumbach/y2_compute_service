@@ -1,5 +1,6 @@
-import data
-import model
+import worker_service.neural_network.data as data
+import worker_service.neural_network.model as model
+from worker_service.neural_network.model_trainer import ModelTrainer
 from timeit import default_timer as timer
 
 # initialize the RNN
@@ -14,7 +15,7 @@ train_loader = data.train_loader(0, 1)
 
 n_epochs = 10
 start = timer()
-trainer = model.ModelTrainer(rnn, val_loader, train_loader, n_epochs, False)
+trainer = ModelTrainer(rnn, val_loader, train_loader, n_epochs, False)
 
 # run the training
 trainer.train()

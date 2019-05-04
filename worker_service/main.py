@@ -1,16 +1,18 @@
 import logging
-import time
 import threading
-import data
-import model
-from communication import Communication
+import time
 from timeit import default_timer as timer
 
-if __name__ == '__main__':
-    print("Starting the y2 worker.")
+from worker_service.communications.communication import Communication
+import worker_service.neural_network.data as data
+from worker_service.neural_network.model import RecurrentModel
+from worker_service.neural_network.model_trainer import ModelTrainer
 
+if __name__ == '__main__':
     # Configure the loggers
     logging.basicConfig(format='%(asctime)s:%(levelname)s: %(message)s', level=logging.INFO)
+    log = logging.getLogger(__name__)
+    log.info('Starting the y2 worker.')
 
     # Start the communications
     communication_crashed = threading.Event()
@@ -18,15 +20,16 @@ if __name__ == '__main__':
 
     messages = communication.receive(0)
     while messages.empty():
-        time.sleep(2)
+        time.sleep(.5)
         messages = communication.receive(0)
 
     message = messages.get_nowait()
     node_id = int.from_bytes(message[:4], byteorder='big')
     total_nodes = int.from_bytes(message[-4:], byteorder='big')
-    print(node_id, total_nodes)
+    log.info("This worker received node id " + str(node_id) + " in a total of " + str(total_nodes) + " nodes.")
 
-    rnn = model.RecurrentModel(13, 200, 4, 30, communication)
+    # Instantiate the NN
+    rnn = RecurrentModel(13, 200, 4, 30, communication)
 
     # initializer data loaders
     val_loader = data.val_loader(node_id, total_nodes)
@@ -35,7 +38,7 @@ if __name__ == '__main__':
     # initialize trainer
     n_epochs = 2
     start = timer()
-    trainer = model.ModelTrainer(rnn, val_loader, train_loader, n_epochs, True)
+    trainer = ModelTrainer(rnn, val_loader, train_loader, n_epochs, True)
 
     # run the training
     trainer.train()
