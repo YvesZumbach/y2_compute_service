@@ -36,7 +36,7 @@ if __name__ == '__main__':
     train_loader = data.train_loader(node_id, total_nodes)
 
     # initialize trainer
-    n_epochs = 2
+    n_epochs = 10
     start = timer()
     trainer = ModelTrainer(rnn, val_loader, train_loader, n_epochs, True)
 

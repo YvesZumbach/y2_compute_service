@@ -10,8 +10,8 @@ from torch import nn
 
 
 class ModelTrainer:
-    _delta = 2.0
-    _parallel = False
+    _delta = 0.5
+    _parallel = True
 
     def __init__(self, model, val_loader, train_loader, n_epochs, communicate):
         self.model = model
@@ -34,7 +34,7 @@ class ModelTrainer:
             y = tensor.clone().detach()
             self.residuals.append(y)
 
-        self.list_parameters = list(self.model.parameters())
+        self.list_parameters = None
 
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.008)
         self.criterion = nn.CTCLoss()
@@ -109,7 +109,7 @@ class ModelTrainer:
         end_batch = timer()
         training_time = end_batch - start_batch
 
-        if self.communicate and self.epoche > 1:
+        if self.communicate and self.epoch > 1:
             start_compress = timer()
             if ModelTrainer._parallel:
                 deltas_to_send = self.compress_gradients_parallel()
@@ -147,10 +147,10 @@ class ModelTrainer:
 
     def compress_gradients(self):
         message = bytearray(0)
-        parameters = list(self.model.parameters())
+        self.list_parameters = list(self.model.parameters())
         count = 0
-        for i in range(len(parameters)):
-            tensor = parameters[i]
+        for i in range(len(self.list_parameters)):
+            tensor = self.list_parameters[i]
             dimensions = len(tensor.size())
             if dimensions == 1:
                 for j in range(len(tensor)):
@@ -192,17 +192,17 @@ class ModelTrainer:
                                 tensor.grad[first][second] = -ModelTrainer._delta
                             delta_bytes = delta.to_bytes(4, byteorder="big")
                             message.extend(delta_bytes)
-        print("Total num of msgs")
-        print(count)
         return message
 
     def decompress_and_apply_messages(self, messages):
-        print("Decompressing received messages")
+        self.list_parameters = list(self.model.parameters())
+        self.log.info("Decompressing received messages")
         weight_index_mask = 0b111111111111111111111
         while not messages.empty():
             message = messages.get_nowait()
             print("Received one message")
-            print("Length of msg: {}".format(len(message)))
+            self.log.info("Decompressing a message")
+            self.log.info("Length of msg: {}".format(len(message)))
             for i in range(0, len(message), 4):
                 delta = message[i:i + 4]
                 int_msg = int.from_bytes(delta, byteorder='big')
@@ -211,18 +211,19 @@ class ModelTrainer:
                 weight_index = int_msg & weight_index_mask
                 int_msg >>= 21
                 tensor_index = int_msg
-                tensor = self.model.parameters()[tensor_index]
+                tensor = self.list_parameters[tensor_index]
                 dimensions = tensor.size()
-                print("Apply delta {} at tensor_index {} at weight_index {}".format(is_positive, tensor_index, weight_index))
+                self.log.info("Apply delta {} at tensor_index {} at weight_index {}".format(is_positive, tensor_index, weight_index))
                 if len(dimensions) == 1:
                     tensor.grad[weight_index] += ModelTrainer._delta if is_positive else -ModelTrainer._delta
                 else:
                     second_dim = dimensions[1]
                     second = weight_index % second_dim
-                    first = weight_index / second_dim
+                    first = weight_index // second_dim
                     tensor.grad[first][second] += ModelTrainer._delta if is_positive else -ModelTrainer._delta
 
     def compress_gradients_parallel(self):
+        self.list_parameters = list(self.model.parameters())
         reduced_message = bytearray(0)
         total_count = 0
 
