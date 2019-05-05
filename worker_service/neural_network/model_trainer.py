@@ -1,9 +1,12 @@
 
-import os
+import bisect
+import logging
+import multiprocessing
 import numpy as np
+import os
+from timeit import default_timer as timer
 import torch
 from torch import nn
-from timeit import default_timer as timer
 
 
 class ModelTrainer:
@@ -31,9 +34,13 @@ class ModelTrainer:
             y = tensor.clone().detach()
             self.residuals.append(y)
 
+        self.list_parameters = list(self.model.parameters())
+
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.008)
         self.criterion = nn.CTCLoss()
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1, gamma=0.5)
+
+        self.log = logging.getLogger(__name__)
 
     def train(self):
         total_loss = 0
@@ -216,54 +223,72 @@ class ModelTrainer:
                     tensor.grad[first][second] += ModelTrainer._delta if is_positive else -ModelTrainer._delta
 
     def compress_gradients_parallel(self):
-        cpu_count = os.cpu_count()
-        pass
+        reduced_message = bytearray(0)
+        total_count = 0
 
-    def compress_gradients_parallel_inner(self, threadIndex, threadCount):
+        cpu_count = multiprocessing.cpu_count()
+        with multiprocessing.Pool(cpu_count) as p:
+            # We don't care about the ordering of the deltas, so we use the lazy unordered version of parallel map to
+            # slightly improve performances
+            for message, count in p.imap_unordered(
+                    self.compress_gradients_parallel_inner, range(len(self.list_parameters))):
+                reduced_message += message
+                total_count += count
+
+        self.log.info("Gradient compression finished. Delta message contains " + str(total_count) +
+                      " individual deltas to apply.")
+        return reduced_message
+
+    def compress_gradients_parallel_inner(self, tensor_index):
+        """
+        Takes the index of a gradient tensor in the gradient array, add the weight changes in the tensor to the
+        corresponding value in the residual tensor. If the value in the residual crosses the predefined delta threshold
+        (tau), then the delta value is removed from the residual and transferred into the gradient. For the residual
+        values that cross the threshold value a delta message will be created.
+        :param tensor_index: The index of the gradient tensor to process in the array of gradient.
+        :return: A tuple containing first a single delta message that contains the concatenation of all the deltas to
+        apply to the corresponding weight tensor, then the number of single delta to apply contained in the message.
+        """
+        tensor = self.list_parameters[tensor_index]
         message = bytearray(0)
-        parameters = list(self.model.parameters())
         count = 0
-        for i in range(len(parameters)):
-            tensor = parameters[i]
-            dimensions = len(tensor.size())
-            if dimensions == 1:
-                for j in range(len(tensor)):
-                    self.residuals[i][j] += tensor.grad[j]
-                    tensor.grad[j] = 0.0
-                    if abs(self.residuals[i][j]) >= ModelTrainer._delta:
+        dimensions = len(tensor.size())
+        if dimensions is 1:
+            for weight_index in range(len(tensor)):
+                self.residuals[tensor_index][weight_index] += tensor.grad[weight_index]
+                tensor.grad[weight_index] = 0.0
+                if abs(self.residuals[tensor_index][weight_index]) >= ModelTrainer._delta:
+                    count += 1
+                    tensor_index = tensor_index << 22
+                    weight_index = weight_index << 1
+                    delta = tensor_index | weight_index
+                    if self.residuals[tensor_index][weight_index] >= ModelTrainer._delta:
+                        delta |= 1
+                        self.residuals[tensor_index][weight_index] -= ModelTrainer._delta
+                        tensor.grad[weight_index] = ModelTrainer._delta
+                    else:
+                        self.residuals[tensor_index][weight_index] += ModelTrainer._delta
+                        tensor.grad[weight_index] = -ModelTrainer._delta
+                    message += delta.to_bytes(4, byteorder="big")
+        else:
+            first_dim = tensor.size()[0]
+            second_dim = tensor.size()[1]
+            for first in range(first_dim):
+                for second in range(second_dim):
+                    self.residuals[tensor_index][first][second] += tensor.grad[first][second]
+                    tensor.grad[first][second] = 0.0
+                    if abs(self.residuals[tensor_index][first][second]) >= ModelTrainer._delta:
                         count += 1
-                        tensor_index = i << 22
-                        weight_index = j << 1
+                        tensor_index = tensor_index << 22
+                        linear_index = first * second_dim + second
+                        weight_index = linear_index << 1
                         delta = tensor_index | weight_index
-                        if self.residuals[i][j] >= ModelTrainer._delta:
+                        if self.residuals[tensor_index][first][second] >= ModelTrainer._delta:
                             delta |= 1
-                            self.residuals[i][j] -= ModelTrainer._delta
-                            tensor.grad[j] = ModelTrainer._delta
+                            self.residuals[first][second] -= ModelTrainer._delta
+                            tensor.grad[first][second] = ModelTrainer._delta
                         else:
-                            self.residuals[i][j] += ModelTrainer._delta
-                            tensor.grad[j] = -ModelTrainer._delta
-                        message.join(delta.to_bytes(4, byteorder="big"))
-            else:
-                first_dim = tensor.size()[0]
-                second_dim = tensor.size()[1]
-                for first in range(first_dim):
-                    for second in range(second_dim):
-                        self.residuals[i][first][second] += tensor.grad[first][second]
-                        tensor.grad[first][second] = 0.0
-                        if abs(self.residuals[i][first][second]) >= ModelTrainer._delta:
-                            count += 1
-                            tensor_index = i << 22
-                            linear_index = first * second_dim + second
-                            weight_index = linear_index << 1
-                            delta = tensor_index | weight_index
-                            if self.residuals[i][first][second] >= ModelTrainer._delta:
-                                delta |= 1
-                                self.residuals[first][second] -= ModelTrainer._delta
-                                tensor.grad[first][second] = ModelTrainer._delta
-                            else:
-                                self.residuals[i][first][second] += ModelTrainer._delta
-                                tensor.grad[first][second] = -ModelTrainer._delta
-                            message.join(delta.to_bytes(4, byteorder="big"))
-        print("Total num of msgs")
-        print(count)
-        return message
+                            self.residuals[tensor_index][first][second] += ModelTrainer._delta
+                            tensor.grad[first][second] = -ModelTrainer._delta
+                        message += delta.to_bytes(4, byteorder="big")
+        return message, count

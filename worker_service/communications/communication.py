@@ -4,7 +4,6 @@ import logging
 import threading
 
 
-
 class Communication:
     """
     Implements communications between the communication service and the worker service.

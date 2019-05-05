@@ -6,13 +6,11 @@ from timeit import default_timer as timer
 # initialize the RNN
 rnn = model.RecurrentModel(13, 200, 4, 30, None)
 
-
 # initializer data loaders
 val_loader = data.val_loader(0, 1)
 train_loader = data.train_loader(0, 1)
 
 # initialize trainer
-
 n_epochs = 10
 start = timer()
 trainer = ModelTrainer(rnn, val_loader, train_loader, n_epochs, False)
