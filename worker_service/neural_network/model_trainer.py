@@ -10,13 +10,15 @@ from torch import nn
 
 
 class ModelTrainer:
-    _delta = 0.5
-    _parallel = True
+    delta = 2.0
+    _parallel = False
 
-    def __init__(self, model, val_loader, train_loader, n_epochs, communicate):
+    def __init__(self, model, val_loader, train_loader, all_val_loader, all_train_loader, n_epochs, communicate):
         self.model = model
         self.val_loader = val_loader
         self.train_loader = train_loader
+        self.all_val_loader = all_val_loader
+        self.all_train_loader = all_train_loader
         self.n_epochs = n_epochs
         self.epoch = 0
 
@@ -54,8 +56,12 @@ class ModelTrainer:
             epoch_training_time = 0
             epoch_compressing_time = 0
 
-            for batch_idx, (inputs, targets) in enumerate(self.train_loader):
-                print('\rBatch {:03}/{:03} Current Loss: {:7.4f}'.format(batch_idx + 1, len(self.train_loader),
+            if self.communicate and self.epoch < 1:
+                train_loader = self.all_train_loader
+            else:
+                train_loader = self.train_loader
+            for batch_idx, (inputs, targets) in enumerate(train_loader):
+                print('\rBatch {:03}/{:03} Current Loss: {:7.4f}'.format(batch_idx + 1, len(train_loader),
                                                                          epoch_loss), end='')
                 local_loss, local_training, local_compress, local_decompress = self.train_batch(inputs, targets)
                 epoch_loss += local_loss
@@ -63,7 +69,7 @@ class ModelTrainer:
                 epoch_compressing_time += local_compress
                 epoch_decompressing_time += local_decompress
 
-            epoch_loss = epoch_loss / len(self.train_loader)
+            epoch_loss = epoch_loss / len(train_loader)
 
             self.train_losses.append(epoch_loss)
 
@@ -71,7 +77,7 @@ class ModelTrainer:
             end = timer()
             if self.communicate:
                 # of samples = 256 * n.epoch
-                sample_size = 256 * len(self.train_loader)
+                sample_size = 256 * len(train_loader)
                 runtime_message = bytearray(0)
                 runtime_message.extend(int(sample_size).to_bytes(4, byteorder="big"))
                 runtime_message.extend(int(epoch_decompressing_time * 1000).to_bytes(4, byteorder="big"))
@@ -88,6 +94,26 @@ class ModelTrainer:
             total_loss += epoch_loss
 
         print('Total job loss: {}'.format(total_loss))
+
+        # compute loss on test set
+        test_loss = 0
+        self.epoch = 0
+        for batch_idx, (inputs, targets) in enumerate(self.val_loader):
+            print('\rBatch {:03}/{:03} Current Loss: {:7.4f}'.format(batch_idx + 1, len(self.val_loader),
+                                                                     epoch_loss), end='')
+            local_loss, local_training, local_compress, local_decompress = self.train_batch(inputs, targets)
+            test_loss += local_loss
+        print('Total test loss: {}'.format(test_loss))
+        if self.communicate:
+            # of samples = 256 * n.epoch
+            sample_size = 256 * len(self.val_loader)
+            runtime_message = bytearray(0)
+            runtime_message.extend(int(sample_size).to_bytes(4, byteorder="big"))
+            runtime_message.extend(int(0).to_bytes(4, byteorder="big"))
+            runtime_message.extend(int(0).to_bytes(4, byteorder="big"))
+            runtime_message.extend(int(0).to_bytes(4, byteorder="big"))
+            runtime_message.extend(int(test_loss * 1000).to_bytes(4, byteorder="big"))
+            self.model.communication.send(2, runtime_message)
 
     def train_batch(self, inputs, targets):
         compress_time = 0
@@ -108,8 +134,7 @@ class ModelTrainer:
         loss.backward()
         end_batch = timer()
         training_time = end_batch - start_batch
-
-        if self.communicate and self.epoch > 1:
+        if self.communicate and self.epoch > 0:
             start_compress = timer()
             if ModelTrainer._parallel:
                 deltas_to_send = self.compress_gradients_parallel()
@@ -117,7 +142,9 @@ class ModelTrainer:
                 deltas_to_send = self.compress_gradients()
             end_compress = timer()
             compress_time = end_compress - start_compress
-            self.model.communication.send(1, deltas_to_send)
+            # only send message if non empty
+            if len(deltas_to_send) > 0:
+                self.model.communication.send(1, deltas_to_send)
 
             messages = self.model.communication.receive(1)
             start_decompress = timer()
@@ -156,18 +183,18 @@ class ModelTrainer:
                 for j in range(len(tensor)):
                     self.residuals[i][j] += tensor.grad[j]
                     tensor.grad[j] = 0.0
-                    if abs(self.residuals[i][j]) >= ModelTrainer._delta:
+                    if abs(self.residuals[i][j]) >= ModelTrainer.delta:
                         count += 1
                         tensor_index = i << 22
                         weight_index = j << 1
                         delta = tensor_index | weight_index
-                        if self.residuals[i][j] >= ModelTrainer._delta:
+                        if self.residuals[i][j] >= ModelTrainer.delta:
                             delta |= 1
-                            self.residuals[i][j] -= ModelTrainer._delta
-                            tensor.grad[j] = ModelTrainer._delta
+                            self.residuals[i][j] -= ModelTrainer.delta
+                            tensor.grad[j] = ModelTrainer.delta
                         else:
-                            self.residuals[i][j] += ModelTrainer._delta
-                            tensor.grad[j] = -ModelTrainer._delta
+                            self.residuals[i][j] += ModelTrainer.delta
+                            tensor.grad[j] = -ModelTrainer.delta
                         delta_bytes = delta.to_bytes(4, byteorder="big")
                         message.extend(delta_bytes)
             else:
@@ -177,30 +204,28 @@ class ModelTrainer:
                     for second in range(second_dim):
                         self.residuals[i][first][second] += tensor.grad[first][second]
                         tensor.grad[first][second] = 0.0
-                        if abs(self.residuals[i][first][second]) >= ModelTrainer._delta:
+                        if abs(self.residuals[i][first][second]) >= ModelTrainer.delta:
                             count += 1
                             tensor_index = i << 22
                             linear_index = first * second_dim + second
                             weight_index = linear_index << 1
                             delta = tensor_index | weight_index
-                            if self.residuals[i][first][second] >= ModelTrainer._delta:
+                            if self.residuals[i][first][second] >= ModelTrainer.delta:
                                 delta |= 1
-                                self.residuals[i][first][second] -= ModelTrainer._delta
-                                tensor.grad[first][second] = ModelTrainer._delta
+                                self.residuals[i][first][second] -= ModelTrainer.delta
+                                tensor.grad[first][second] = ModelTrainer.delta
                             else:
-                                self.residuals[i][first][second] += ModelTrainer._delta
-                                tensor.grad[first][second] = -ModelTrainer._delta
+                                self.residuals[i][first][second] += ModelTrainer.delta
+                                tensor.grad[first][second] = -ModelTrainer.delta
                             delta_bytes = delta.to_bytes(4, byteorder="big")
                             message.extend(delta_bytes)
         return message
 
     def decompress_and_apply_messages(self, messages):
         self.list_parameters = list(self.model.parameters())
-        self.log.info("Decompressing received messages")
         weight_index_mask = 0b111111111111111111111
         while not messages.empty():
             message = messages.get_nowait()
-            print("Received one message")
             self.log.info("Decompressing a message")
             self.log.info("Length of msg: {}".format(len(message)))
             for i in range(0, len(message), 4):
@@ -213,26 +238,29 @@ class ModelTrainer:
                 tensor_index = int_msg
                 tensor = self.list_parameters[tensor_index]
                 dimensions = tensor.size()
-                self.log.info("Apply delta {} at tensor_index {} at weight_index {}".format(is_positive, tensor_index, weight_index))
                 if len(dimensions) == 1:
-                    tensor.grad[weight_index] += ModelTrainer._delta if is_positive else -ModelTrainer._delta
+                    tensor.grad[weight_index] += ModelTrainer.delta if is_positive else -ModelTrainer.delta
                 else:
                     second_dim = dimensions[1]
                     second = weight_index % second_dim
                     first = weight_index // second_dim
-                    tensor.grad[first][second] += ModelTrainer._delta if is_positive else -ModelTrainer._delta
+                    tensor.grad[first][second] += ModelTrainer.delta if is_positive else -ModelTrainer.delta
 
     def compress_gradients_parallel(self):
         self.list_parameters = list(self.model.parameters())
         reduced_message = bytearray(0)
         total_count = 0
 
+        parallel_list_parameters = [
+            (tensor_index, self.model.parameters(), self.residuals) for
+            tensor_index in range(len(self.list_parameters))]
         cpu_count = multiprocessing.cpu_count()
         with multiprocessing.Pool(cpu_count) as p:
             # We don't care about the ordering of the deltas, so we use the lazy unordered version of parallel map to
             # slightly improve performances
-            for message, count in p.imap_unordered(
-                    self.compress_gradients_parallel_inner, range(len(self.list_parameters))):
+
+            for message, count in p.starmap(
+                    compress_gradients_parallel_inner, parallel_list_parameters):
                 reduced_message += message
                 total_count += count
 
@@ -240,56 +268,64 @@ class ModelTrainer:
                       " individual deltas to apply.")
         return reduced_message
 
-    def compress_gradients_parallel_inner(self, tensor_index):
-        """
-        Takes the index of a gradient tensor in the gradient array, add the weight changes in the tensor to the
-        corresponding value in the residual tensor. If the value in the residual crosses the predefined delta threshold
-        (tau), then the delta value is removed from the residual and transferred into the gradient. For the residual
-        values that cross the threshold value a delta message will be created.
-        :param tensor_index: The index of the gradient tensor to process in the array of gradient.
-        :return: A tuple containing first a single delta message that contains the concatenation of all the deltas to
-        apply to the corresponding weight tensor, then the number of single delta to apply contained in the message.
-        """
-        tensor = self.list_parameters[tensor_index]
-        message = bytearray(0)
-        count = 0
-        dimensions = len(tensor.size())
-        if dimensions is 1:
-            for weight_index in range(len(tensor)):
-                self.residuals[tensor_index][weight_index] += tensor.grad[weight_index]
-                tensor.grad[weight_index] = 0.0
-                if abs(self.residuals[tensor_index][weight_index]) >= ModelTrainer._delta:
+
+def compress_gradients_parallel_inner(tensor_index, list_parameters, residuals):
+    """
+    Takes the index of a gradient tensor in the gradient array, add the weight changes in the tensor to the
+    corresponding value in the residual tensor. If the value in the residual crosses the predefined delta threshold
+    (tau), then the delta value is removed from the residual and transferred into the gradient. For the residual
+    values that cross the threshold value a delta message will be created.
+    :param tensor_index: The index of the gradient tensor to process in the array of gradient.
+    :param list_parameters: The list of all parameters of the neural network
+    :param residuals: The list of all accumulated residuals
+    :return: A tuple containing first a single delta message that contains the concatenation of all the deltas to
+    apply to the corresponding weight tensor, then the number of single delta to apply contained in the message.
+    """
+    for param in list_parameters:
+        print(param.grad)
+    tensor = list(list_parameters)[tensor_index]
+    message = bytearray(0)
+    count = 0
+    dimensions = len(tensor.size())
+    if dimensions is 1:
+        for weight_index in range(len(tensor)):
+            print(tensor.grad)
+            residuals[tensor_index][weight_index] += tensor.grad[weight_index]
+            tensor.grad[weight_index] = 0.0
+            if abs(residuals[tensor_index][weight_index]) >= ModelTrainer.delta:
+                count += 1
+                tensor_index = tensor_index << 22
+                weight_index = weight_index << 1
+                delta = tensor_index | weight_index
+                if residuals[tensor_index][weight_index] >= ModelTrainer.delta:
+                    delta |= 1
+                    residuals[tensor_index][weight_index] -= ModelTrainer.delta
+                    tensor.grad[weight_index] = ModelTrainer.delta
+                else:
+                    residuals[tensor_index][weight_index] += ModelTrainer.delta
+                    tensor.grad[weight_index] = -ModelTrainer.delta
+                message += delta.to_bytes(4, byteorder="big")
+    else:
+        first_dim = tensor.size()[0]
+        second_dim = tensor.size()[1]
+        for first in range(first_dim):
+            for second in range(second_dim):
+                print(tensor.grad)
+                print(tensor.grad[first])
+                residuals[tensor_index][first][second] += tensor.grad[first][second]
+                tensor.grad[first][second] = 0.0
+                if abs(residuals[tensor_index][first][second]) >= ModelTrainer.delta:
                     count += 1
                     tensor_index = tensor_index << 22
-                    weight_index = weight_index << 1
+                    linear_index = first * second_dim + second
+                    weight_index = linear_index << 1
                     delta = tensor_index | weight_index
-                    if self.residuals[tensor_index][weight_index] >= ModelTrainer._delta:
+                    if residuals[tensor_index][first][second] >= ModelTrainer.delta:
                         delta |= 1
-                        self.residuals[tensor_index][weight_index] -= ModelTrainer._delta
-                        tensor.grad[weight_index] = ModelTrainer._delta
+                        residuals[first][second] -= ModelTrainer.delta
+                        tensor.grad[first][second] = ModelTrainer.delta
                     else:
-                        self.residuals[tensor_index][weight_index] += ModelTrainer._delta
-                        tensor.grad[weight_index] = -ModelTrainer._delta
+                        residuals[tensor_index][first][second] += ModelTrainer.delta
+                        tensor.grad[first][second] = -ModelTrainer.delta
                     message += delta.to_bytes(4, byteorder="big")
-        else:
-            first_dim = tensor.size()[0]
-            second_dim = tensor.size()[1]
-            for first in range(first_dim):
-                for second in range(second_dim):
-                    self.residuals[tensor_index][first][second] += tensor.grad[first][second]
-                    tensor.grad[first][second] = 0.0
-                    if abs(self.residuals[tensor_index][first][second]) >= ModelTrainer._delta:
-                        count += 1
-                        tensor_index = tensor_index << 22
-                        linear_index = first * second_dim + second
-                        weight_index = linear_index << 1
-                        delta = tensor_index | weight_index
-                        if self.residuals[tensor_index][first][second] >= ModelTrainer._delta:
-                            delta |= 1
-                            self.residuals[first][second] -= ModelTrainer._delta
-                            tensor.grad[first][second] = ModelTrainer._delta
-                        else:
-                            self.residuals[tensor_index][first][second] += ModelTrainer._delta
-                            tensor.grad[first][second] = -ModelTrainer._delta
-                        message += delta.to_bytes(4, byteorder="big")
-        return message, count
+    return message, count

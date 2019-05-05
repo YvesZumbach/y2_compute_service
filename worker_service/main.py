@@ -5,6 +5,7 @@ from timeit import default_timer as timer
 
 from communications.communication import Communication
 import neural_network.data as data
+import neural_network.all_data as all_data
 from neural_network.model import RecurrentModel
 from neural_network.model_trainer import ModelTrainer
 
@@ -35,10 +36,14 @@ if __name__ == '__main__':
     val_loader = data.val_loader(node_id, total_nodes)
     train_loader = data.train_loader(node_id, total_nodes)
 
+    # initialize data loaders with all values for first epochs
+    all_val_loader = all_data.val_loader()
+    all_train_loader = all_data.train_loader()
+
     # initialize trainer
     n_epochs = 10
     start = timer()
-    trainer = ModelTrainer(rnn, val_loader, train_loader, n_epochs, True)
+    trainer = ModelTrainer(rnn, val_loader, train_loader, all_val_loader, all_train_loader, n_epochs, True)
 
     # run the training
     trainer.train()

@@ -7,7 +7,7 @@ from torch.utils.data.dataset import Dataset
 
 
 class SpeechDataset(Dataset):
-    def __init__(self, patterns_path, labels_path, node_id, number_nodes):
+    def __init__(self, patterns_path, labels_path):
         """
           Parameters:
             patterns_path:  path to the patterns (x)
@@ -23,19 +23,15 @@ class SpeechDataset(Dataset):
         self.X = loader(patterns_path).T
         self.y = loader(labels_path)
 
-        # turning the numpy arrays into tensors
-        data_chunk_size = len(self.X) / number_nodes
-        start_chunk = int(node_id * data_chunk_size)
-        end_chunk = int(start_chunk + data_chunk_size)
-
-        training_data = []
-        for i in range(start_chunk, end_chunk):
-            training_data.append(torch.Tensor(self.X[i]))
-        self.X = training_data
-        labels = []
-        for i in range(len(self.y )):
-            labels.append(torch.Tensor(self.y[i]))
-        self.y = labels
+        # keep all training data & labels for first epoch training
+        all_training_data = []
+        all_labels = []
+        for i in range(len(self.X)):
+            all_training_data.append(torch.Tensor(self.X[i]))
+        for i in range(len(self.y)):
+            all_labels.append(torch.Tensor(self.y[i]))
+        self.X = all_training_data
+        self.y = all_labels
 
     def __getitem__(self, i):
         return self.X[i], self.y[i]
@@ -74,7 +70,7 @@ def collate_unpadded(l):
     return x, y
 
 
-def train_loader(node_id, number_nodes):
+def train_loader():
     """
       Loads the training data (letter wise).
       Returns:
@@ -90,13 +86,12 @@ def train_loader(node_id, number_nodes):
             T is the length of the label, variable
     """
     train_dataset = SpeechDataset('data/training_data_preprocessed.npy',
-                                  'data/training_labels_preprocessed.npy',
-                                  node_id, number_nodes)
+                                  'data/training_labels_preprocessed.npy')
     train_loader = DataLoader(train_dataset, batch_size=256, shuffle=False, collate_fn=collate_padded)
     return train_loader
 
 
-def val_loader(node_id, number_nodes):
+def val_loader():
     """
       Loads the validation data (letter wise).
       Returns:
@@ -112,7 +107,6 @@ def val_loader(node_id, number_nodes):
             T is the length of the label, variable
     """
     val_dataset = SpeechDataset('data/testing_data_preprocessed.npy',
-                                'data/testing_labels_preprocessed.npy',
-                                node_id, number_nodes)
+                                'data/testing_labels_preprocessed.npy')
     val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, collate_fn=collate_padded)
     return val_loader
